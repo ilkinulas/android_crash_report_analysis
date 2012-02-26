@@ -1,136 +1,126 @@
-<!--
-You are free to copy and use this sample in accordance with the terms of the
-Apache license (http://www.apache.org/licenses/LICENSE-2.0.html)
--->
-
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
-	<head>
-		<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
-		<title>
-			Google Visualization API Sample
-		</title>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<title>
+	Android Crash Report Analysis (ACRA) tool
+	</title>
 
-	  <style type="text/css">
-	  	table, td {
-	  		border: 1px solid black;
-	  	}
-	  	.count {
-	    color: black;
-	    background-color: #dfdfdf;
-	  	vertical-align:top;
+	<style type="text/css">
+		table, td {
+			border: 1px solid black;
+		}
+		.count {
+			color: black;
+			background-color: #dfdfdf;
+			vertical-align:top;
 			text-align:center;
-	  	font-size:50px;
-	  	}
-	  	.stackTrace {
-	  		font-family: "Courier New";
-	  	}
-	  </style>		
-		<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
-		<script type="text/javascript" src="http://www.google.com/jsapi"></script>
-		<script type="text/javascript">
-			google.load('visualization', '1', {packages: ['linechart']});
-		</script>
-		<script type="text/javascript">
-		var visualization;
-		var APPLICATION_PACKAGE_NAME = "com.appsonfire.okey";
-		var APP_VERSION = 0;
-		var USER_COMMENT = 1;
-		var STACK_TRACE = 2;
+			font-size:50px;
+		}
+		.stackTrace {
+			font-family: "Courier New";
+		}
+	</style>		
+	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
+	<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+	<script type="text/javascript">
+	google.load('visualization', '1', {packages: ['linechart']});
+	</script>
+	<script type="text/javascript">
+	var GOOGLE_DOCS_SPREADSHEET_KEY = "0AnD9FLuaG8DNdFpvSGhqS1g5ck1kbnNsYUtjWGYyRlE";
+	var APPLICATION_PACKAGE_NAME = "com.appsonfire.okey";
+	var APP_VERSION = 0;
+	var USER_COMMENT = 1;
+	var STACK_TRACE = 2;
 
-		var CURRENT_APP_VERSION = 19;
-		var stackTraceMap = new Array();
+	var CURRENT_APP_VERSION = 19;
+	var stackTraceMap = new Array();
 
-		function drawVisualization() {
-			var query = new google.visualization.Query(
-					'http://spreadsheets.google.com/tq?key=0AnD9FLuaG8DNdFpvSGhqS1g5ck1kbnNsYUtjWGYyRlE');
-			
-			// Apply query language.
-			query.setQuery('SELECT  C, T , P');
-			
-			// Send the query with a callback function.
-			query.send(handleQueryResponse);
+	function drawVisualization() {
+		var query = new google.visualization.Query(
+		'http://spreadsheets.google.com/tq?key=' + GOOGLE_DOCS_SPREADSHEET_KEY);
+		query.setQuery('SELECT  C, T , P');
+		query.send(handleQueryResponse);
+	}
+
+
+	function handleQueryResponse(response) {
+		if (response.isError()) {
+			alert('Error in query: ' + response.getMessage() + ' ' + response.getDetailedMessage());
+		return;
 		}
 
+		var data = response.getDataTable();
+		var numRows = data.getNumberOfRows();
 
-		function handleQueryResponse(response) {
-			if (response.isError()) {
-				alert('Error in query: ' + response.getMessage() + ' ' + response.getDetailedMessage());
-				return;
-			}
-			
-			var data = response.getDataTable();
-			var numRows = data.getNumberOfRows();
+		for (var i=0; i<numRows; i++) {
+			processRow(data, i);  
+		}
+		for (var key in stackTraceMap) {
+			var count =  stackTraceMap[key]["count"];
+			var fullStackTrace = stackTraceMap[key]["fullStackTrace"];
+			var comments = stackTraceMap[key]["comments"];
 
-			for (var i=0; i<numRows; i++) {
-				processRow(data, i);  
+			var html = "<tr><td class='count'>" + count + "</td><td class='stackTrace'>" + formatStackTrace(fullStackTrace);
+			for (i in comments) {
+				html = html + "<li>" + comments[i];
 			}
-			for (var key in stackTraceMap) {
-				var count =  stackTraceMap[key]["count"];
-				var fullStackTrace = stackTraceMap[key]["fullStackTrace"];
-				var comments = stackTraceMap[key]["comments"];
+			html = html + "</td></tr>";
+			$("#data").append(html);
+		}
+	}
 
-				var html = "<TR><TD class='count'>" + count + "</TD><TD class='stackTrace'>" + formatStackTrace(fullStackTrace);
-				for (i in comments) {
-					html = html + "<li>" + comments[i];
-				}
-				html = html + "</TD></TR>";
-				$("#data").append(html);
-			}
+	function processRow(data, rowNum) {
+		var comment = data.getValue(rowNum, USER_COMMENT);
+		var appVersion = data.getValue(rowNum, APP_VERSION);
+		var stackTrace = data.getValue(rowNum, STACK_TRACE);
+		if (appVersion < CURRENT_APP_VERSION) {
+			return;
 		}
 
-		function processRow(data, rowNum) {
-			var comment = data.getValue(rowNum, USER_COMMENT);
-			var appVersion = data.getValue(rowNum, APP_VERSION);
-			var stackTrace = data.getValue(rowNum, STACK_TRACE);
-			if (appVersion < CURRENT_APP_VERSION) {
-				return;
-			}
+		var key = filterStackTrace(stackTrace);
+		if (key in stackTraceMap) {
+			stackTraceMap[key]["count"] = stackTraceMap[key]["count"] + 1;
+		} else {
+			stackTraceMap[key] = {"count":1, "fullStackTrace":stackTrace, "comments":[]};
+		}
+		if (comment) {
+			stackTraceMap[key]["comments"].push(comment);
+		}
+	}
 
-			var key = filterStackTrace(stackTrace);
-			if (key in stackTraceMap) {
-				stackTraceMap[key]["count"] = stackTraceMap[key]["count"] + 1;
-			} else {
-				stackTraceMap[key] = {"count":1, "fullStackTrace":stackTrace, "comments":[]};
-			}
-			if (comment) {
-				stackTraceMap[key]["comments"].push(comment);
+	function formatStackTrace(stackTrace) {
+		var lines = stackTrace.split("\n");
+		return lines.join("<br>");
+	}
+
+	function filterStackTrace(stackTrace) {
+		var lines = stackTrace.split("\n");
+		var result="";
+		for (var  i=0; i<lines.length; i++) {
+			var line = lines[i];
+			if (line.indexOf(APPLICATION_PACKAGE_NAME) != -1) {
+				result = result + line;
 			}
 		}
+		return result;
+	}		
 
-		function formatStackTrace(stackTrace) {
-			var lines = stackTrace.split("\n");
-			return lines.join("<br>");
-		}
-
-    function filterStackTrace(stackTrace) {
-      var lines = stackTrace.split("\n");
-      var result="";
-      for (var  i=0; i<lines.length; i++) {
-        var line = lines[i];
-        if (line.indexOf(APPLICATION_PACKAGE_NAME) != -1) {
-          result = result + line;
-        }
-      }
-      return result;
-    }		
-		
-		google.setOnLoadCallback(drawVisualization);
-		</script>
-	</head>
-	<body style="font-family: Arial;border: 0 none;">
-		<table id="data">
-			<tr>
-				<td>
-				HATA SAYISI
-				</td>
-				<td>
-				HATA / Kullanıcı Yorumu
-				</td>
-			<tr>
-
-		</table>
-	</body>
+	google.setOnLoadCallback(drawVisualization);
+</script>
+</head>
+<body style="font-family: Arial;border: 0 none;">
+	<table id="data">
+	<tr>
+	<td>
+	NUMBER OF EXCEPTIONS
+	</td>
+	<td>
+	STACK TRACE AND USER COMMENTS
+	</td>
+	<tr>
+	</table>
+</body>
 </html>
 
 ​
